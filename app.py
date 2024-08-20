@@ -1,43 +1,36 @@
 import streamlit as st
 import pickle
 import numpy as np
+import warnings
 
-# Load the trained model
-model = pickle.load(open('random_forest_regression_model.pkl', 'rb'))
+# Suppress warnings from scikit-learn
+warnings.filterwarnings("ignore", category=Warning)
 
+# Load the trained model with error handling
+try:
+    with open('random_forest_regression_model.pkl', 'rb') as model_file:
+        model = pickle.load(model_file)
+except Exception as e:
+    st.error(f"Error loading model: {e}")
+    model = None
 
 def preprocess_input(Year, Present_Price, Kms_Driven, Owner, Fuel_Type_Petrol, Seller_Type_Individual,
                      Transmission_Manual):
     Fuel_Type_Diesel = 0
 
     # Handle zero Kms_Driven separately to avoid taking logarithm of zero
-    if Kms_Driven == 0:
-        Kms_Driven2 = 0
-    else:
-        Kms_Driven2 = np.log(Kms_Driven)
+    Kms_Driven2 = np.log1p(Kms_Driven)  # Use np.log1p for log(1 + x), avoids issues with zero
 
     Year = 2024 - Year
 
-    if Fuel_Type_Petrol == 'Petrol':
-        Fuel_Type_Petrol = 1
-        Fuel_Type_Diesel = 0
-    else:
-        Fuel_Type_Petrol = 0
-        Fuel_Type_Diesel = 1
+    Fuel_Type_Petrol = 1 if Fuel_Type_Petrol == 'Petrol' else 0
+    Fuel_Type_Diesel = 1 - Fuel_Type_Petrol
 
-    if Seller_Type_Individual == 'Individual':
-        Seller_Type_Individual = 1
-    else:
-        Seller_Type_Individual = 0
-
-    if Transmission_Manual == 'Automatic':
-        Transmission_Manual = 0
-    else:
-        Transmission_Manual = 1
+    Seller_Type_Individual = 1 if Seller_Type_Individual == 'Individual' else 0
+    Transmission_Manual = 0 if Transmission_Manual == 'Automatic' else 1
 
     return [[Present_Price, Kms_Driven2, Owner, Year, Fuel_Type_Diesel, Fuel_Type_Petrol, Seller_Type_Individual,
              Transmission_Manual]]
-
 
 def main():
     st.title('Car Price Prediction')
@@ -53,15 +46,17 @@ def main():
         Seller_Type_Individual = st.selectbox('Seller Type', ['Individual', 'Dealer'])
         Transmission_Manual = st.selectbox('Transmission', ['Manual', 'Automatic'])
     if st.button('Predict'):
-        input_data = preprocess_input(Year, Present_Price, Kms_Driven, Owner, Fuel_Type_Petrol, Seller_Type_Individual,
-                                      Transmission_Manual)
-        prediction = model.predict(input_data)
-        output = round(prediction[0], 2)
-        if output < 0:
-            st.error("Sorry, you cannot sell this car.")
+        if model is not None:
+            input_data = preprocess_input(Year, Present_Price, Kms_Driven, Owner, Fuel_Type_Petrol, Seller_Type_Individual,
+                                          Transmission_Manual)
+            prediction = model.predict(input_data)
+            output = round(prediction[0], 2)
+            if output < 0:
+                st.error("Sorry, you cannot sell this car.")
+            else:
+                st.success(f"You can sell the car at {output} lakh")
         else:
-            st.success("You can sell the car at {}".format(output))
-
+            st.error("Model could not be loaded. Please check the model file.")
 
 if __name__ == '__main__':
     main()
